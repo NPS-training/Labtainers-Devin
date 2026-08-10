@@ -763,9 +763,9 @@ def processExecute(results, eachgoal, goal_times):
         #print "Correct answer is (%s) result (%s)" % (current_onlyanswer, resulttagresult)
         #found = compare_result_answer(resulttagresult, current_onlyanswer, eachgoal['goaloperator'])
 
-        command = "%s %s %s" % (executefile, resulttagresult, current_onlyanswer)
-        #print("Command to execute is (%s)" % command)
-        result = subprocess.call(command, shell=True)
+        command = [executefile, str(resulttagresult), str(current_onlyanswer)]
+        #print("Command to execute is (%s)" % str(command))
+        result = subprocess.call(command, shell=False)
         if result:
             #print "processExecute return 1"
             goal_times.addGoal(goalid, fulltimestamp, True)
