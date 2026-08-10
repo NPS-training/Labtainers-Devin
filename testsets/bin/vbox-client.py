@@ -1,4 +1,5 @@
 #!/opt/labtainer/venv/bin/python3
+import os
 import sys
 import socket
 import argparse
@@ -9,7 +10,7 @@ upon which this script is invoked.
 '''
 '''
 hstring = 'list runningvms\nlist vms\ncontrolvm <vm>reset\ncontrolvm <vm> poweroff\nstartvm <vm>'
-server_addr = ('10.20.200.41', 6000)
+server_addr = (os.getenv('VBOXSERVER_ADDR', '127.0.0.1'), int(os.getenv('VBOXSERVER_PORT', '6000')))
 parser = argparse.ArgumentParser(prog='vbox-client.py', formatter_class=argparse.RawTextHelpFormatter, description='Start a VBox vm on %s\n%s' % (server_addr[0], hstring))
 parser.add_argument('command', action='store', help='The command to run, in quotes')
 
