@@ -35,6 +35,7 @@ import os
 import glob
 import argparse
 from flask_table import Table, Col, LinkCol, create_table, NestedTableCol, html
+from markupsafe import escape
 
 '''
 Use the Flask framework to create dynamic web pages displaying student goals
@@ -42,9 +43,9 @@ and the intermediate results and raw artifacts.
 '''
 
 def centerIt(content):
-     retval = '<td style="text-align:center">%s</td>' % content
+     retval = '<td style="text-align:center">%s</td>' % escape(content)
      #print('content: %s' % content)
-     return content
+     return escape(content)
 class HackLinkCol(LinkCol):
     def td_format(self, content):
         if ':' in content:
@@ -56,8 +57,8 @@ class HackLinkCol(LinkCol):
     def td_contents(self, item, attr_list):
         attrs = dict(href=self.url(item))
         attrs.update(self.anchor_attrs)
-        text = self.td_format(self.text(item, attr_list))
-        element_ret = html.element('a', attrs=attrs, content=text, escape_content=False)
+        text = escape(self.td_format(self.text(item, attr_list)))
+        element_ret = html.element('a', attrs=attrs, content=text)
         return element_ret
 
 class HackCol(Col):
