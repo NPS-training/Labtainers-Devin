@@ -28,21 +28,25 @@ STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN
 ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 POSSIBILITY OF SUCH DAMAGE.
 '''
-import os
 import sys
 import json
-import subprocess
 import VersionInfo
+import ImageRef
+from ImageRef import validImage, validTag, validDigest
 '''
 Return creation date and user of a given image from a local registry, i.e.,
-the test registry.
+the test registry.  Image names, labels and tags provided by the registry are
+untrusted, see ImageRef for the validation applied to them.
 '''
 
-
+MANIFEST_ACCEPT = 'Accept: application/vnd.docker.distribution.manifest.v2+json'
 
 def inspectLocal(image, lgr, test_registry, is_rebuild=False, quiet=False, no_pull=False):
     use_tag = 'latest'
     lgr.debug('inspectLocal image %s' % image)
+    if not validImage(image) or not validImage(test_registry):
+        lgr.error('inspectLocal invalid image %s or registry %s' % (image, test_registry))
+        return None, None, None, None, None
     digest = getDigest(image, 'latest', test_registry)
     if digest is None:
         return None, None, None, None, None
@@ -51,7 +55,13 @@ def inspectLocal(image, lgr, test_registry, is_rebuild=False, quiet=False, no_pu
     #print('base is %s' % base)
     
     if not no_pull and base is not None:
+       if '.' not in base:
+           lgr.error('inspectLocal image %s has invalid base label %s' % (image, base))
+           return None, None, None, None, None
        base_image, base_id = base.rsplit('.', 1)
+       if not validImage(base_image) or not validTag(base_id):
+           lgr.error('inspectLocal image %s has invalid base label %s' % (image, base))
+           return None, None, None, None, None
        my_id = VersionInfo.getImageId(base_image, quiet)
        if my_id == base_id:
            pass
@@ -63,8 +73,7 @@ def inspectLocal(image, lgr, test_registry, is_rebuild=False, quiet=False, no_pu
             if is_rebuild or need_tag in tlist:
                 use_tag = need_tag
             elif quiet:
-                cmd = 'docker pull %s' % base_image
-                os.system(cmd)
+                ImageRef.dockerPull(base_image, lgr=lgr)
             else:
                 print('**************************************************')
                 print('*  This lab will require a download of           *')
@@ -79,17 +88,17 @@ def inspectLocal(image, lgr, test_registry, is_rebuild=False, quiet=False, no_pu
                     exit(0)
                 else:
                     print('Please wait for download to complete...')
-                    cmd = 'docker pull %s' % base_image
-                    os.system(cmd)
+                    ImageRef.dockerPull(base_image, lgr=lgr)
                     print('Download has completed.  Wait for lab to start.')
 
     return created, user, version, use_tag, base
 
 def checkRegistryExists(test_registry, lgr):
-    cmd = 'curl http://%s/v2/' % test_registry
+    if not validImage(test_registry):
+        lgr.error('checkRegistryExists invalid registry %s' % test_registry)
+        return False
     retval = True
-    ps = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE,stderr=subprocess.PIPE)
-    output = ps.communicate()
+    output = ImageRef.curl(['http://%s/v2/' % test_registry])
     if len(output[0]) > 0:
         val = output[0].decode('utf-8')
         if val.strip() != '{}':
@@ -101,9 +110,10 @@ def checkRegistryExists(test_registry, lgr):
     return retval
     
 def getTags(image, test_registry):
-    cmd =   'curl --silent --header "Accept: application/vnd.docker.distribution.manifest.v2+json"  "http://%s/v2/%s/tags/list"' % (test_registry, image)
-    ps = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE,stderr=subprocess.PIPE)
-    output = ps.communicate()
+    if not validImage(image) or not validImage(test_registry):
+        return None
+    output = ImageRef.curl(['--silent', '--header', MANIFEST_ACCEPT,
+                            'http://%s/v2/%s/tags/list' % (test_registry, image)])
     if len(output[0].strip()) > 0:
         j = json.loads(output[0].decode('utf-8'))
         if 'tags' in j:
@@ -114,9 +124,10 @@ def getTags(image, test_registry):
         return None
 
 def getDigest(image, tag, test_registry):
-    cmd =   'curl --silent --header "Accept: application/vnd.docker.distribution.manifest.v2+json"  "http://%s/v2/%s/manifests/%s"' % (test_registry, image, tag)
-    ps = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE,stderr=subprocess.PIPE)
-    output = ps.communicate()
+    if not validImage(image) or not validImage(test_registry) or not validTag(tag):
+        return None
+    output = ImageRef.curl(['--silent', '--header', MANIFEST_ACCEPT,
+                            'http://%s/v2/%s/manifests/%s' % (test_registry, image, tag)])
     if len(output[0].strip()) > 0:
         j = json.loads(output[0].decode('utf-8'))
         if 'config' in j:
@@ -127,9 +138,10 @@ def getDigest(image, tag, test_registry):
         return None
 
 def getCreated(image, digest, test_registry):
-    cmd = 'curl --silent --location "http://%s/v2/%s/blobs/%s"' % (test_registry, image, digest)
-    ps = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE,stderr=subprocess.PIPE)
-    output = ps.communicate()
+    if not validImage(image) or not validImage(test_registry) or not validDigest(digest):
+        return None, None, None, None
+    output = ImageRef.curl(['--silent', '--location',
+                            'http://%s/v2/%s/blobs/%s' % (test_registry, image, digest)])
     if len(output[0].strip()) > 0:
         j = json.loads(output[0].decode('utf-8'))
         #print j['container_config']['User']
@@ -142,6 +154,7 @@ def getCreated(image, digest, test_registry):
             if '/' in base:
                 base = '%s/%s' % (test_registry, base.split('/')[1])
         return j['created'], j['container_config']['User'], version, base
+    return None, None, None, None
 
 #created, user, version, use_tag = inspectLocal('radius.radius.student', 'testregistry:5000', True)
 #print '%s  user: %s version: %s use_tag %s' % (created, user, version, use_tag)

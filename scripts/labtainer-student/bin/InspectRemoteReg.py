@@ -28,18 +28,25 @@ STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN
 ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 POSSIBILITY OF SUCH DAMAGE.
 '''
-import os
 import sys
 import json
-import subprocess
 import VersionInfo
+import ImageRef
+from ImageRef import validImage, validTag, validDigest, validToken
 '''
 Return creation date and user of a given image from the Docker Hub
-without pulling the image.
+without pulling the image.  Image names, labels and tags provided by the
+registry are untrusted, see ImageRef for the validation applied to them.
 '''
+MANIFEST_ACCEPT = 'Accept: application/vnd.docker.distribution.manifest.v2+json'
+REGISTRY_URL = 'https://registry-1.docker.io'
+
 def inspectRemote(image, lgr, is_rebuild=False, quiet=False, no_pull=False, base_registry=None):
     lgr.debug('inspectRemote image %s no_pull: %r' % (image, no_pull))
     use_tag = 'latest'
+    if not validImage(image):
+        lgr.error('inspectRemote invalid image %s' % image)
+        return None, None, None, None
     token = getToken(image)
     if token is None or len(token.strip()) == 0:
         return None, None, None, None
@@ -62,7 +69,13 @@ def inspectRemote(image, lgr, is_rebuild=False, quiet=False, no_pull=False, base
             else:
                 base = '%s/%s' % (base_registry, parts[1])
         lgr.debug('base is %s' % base)
+        if '.' not in base:
+            lgr.error('inspectRemote image %s has invalid base label %s' % (image, base))
+            return None, None, None, None
         base_image, base_id = base.rsplit('.', 1)
+        if not validImage(base_image) or not validTag(base_id):
+            lgr.error('inspectRemote image %s has invalid base label %s' % (image, base))
+            return None, None, None, None
         my_id = VersionInfo.getImageId(base_image, quiet)
         if (my_id == base_id):
             pass
@@ -74,8 +87,7 @@ def inspectRemote(image, lgr, is_rebuild=False, quiet=False, no_pull=False, base
             if is_rebuild or need_tag in tlist:
                 use_tag = need_tag
             elif quiet:
-                cmd = 'docker pull %s' % base_image
-                os.system(cmd)
+                ImageRef.dockerPull(base_image, lgr=lgr)
             else:
                 print('**************************************************')
                 print('*  This lab will require a download of           *')
@@ -90,8 +102,7 @@ def inspectRemote(image, lgr, is_rebuild=False, quiet=False, no_pull=False, base
                     exit(0)
                 else:
                     print('Please wait for download to complete...')
-                    cmd = 'docker pull %s' % base_image
-                    os.system(cmd)
+                    ImageRef.dockerPull(base_image, lgr=lgr)
                     print('Download has completed.  Wait for lab to start.')
     return created, user, version, use_tag
 
@@ -107,9 +118,11 @@ def extractJson(output):
         return output
 
 def getTags(image, token):
-    cmd =   'curl --silent --header "Accept: application/vnd.docker.distribution.manifest.v2+json" --header "Authorization: Bearer %s"  "https://registry-1.docker.io/v2/%s/tags/list"' % (token, image)
-    ps = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE,stderr=subprocess.PIPE)
-    output = ps.communicate()
+    if not validImage(image) or not validToken(token):
+        return None
+    output = ImageRef.curl(['--silent', '--header', MANIFEST_ACCEPT,
+                            '--header', 'Authorization: Bearer %s' % token,
+                            '%s/v2/%s/tags/list' % (REGISTRY_URL, image)])
     if len(output[0].strip()) > 0:
         jstring = extractJson(output[0].decode('utf-8'))
         try:
@@ -125,20 +138,17 @@ def getTags(image, token):
         return None
 
 def reachDockerHub():
-    cmd = 'curl --silent "https://docker.io"'
-    ps = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE,stderr=subprocess.PIPE)
-    output = ps.communicate()
+    output = ImageRef.curl(['--silent', 'https://docker.io'])
     if len(output[0].strip()) > 0:
         return True
     else:
         return False
 
 def getToken(image):
-    cmd = 'curl --silent "https://auth.docker.io/token?scope=repository:%s:pull&service=registry.docker.io"' % (image) 
-    #cmd = 'curl --silent "https://auth.docker.io/token?service=registry.docker.io&scope=repository:%s:pull,push"' % (image)
-    #print('cmd is %s' % cmd)
-    ps = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE,stderr=subprocess.PIPE)
-    output = ps.communicate()
+    if not validImage(image):
+        return None
+    url = 'https://auth.docker.io/token?scope=repository:%s:pull&service=registry.docker.io' % image
+    output = ImageRef.curl(['--silent', url])
      
     if len(output[0].strip()) > 0:
         jstring = extractJson(output[0].decode('utf-8'))
@@ -153,16 +163,18 @@ def getToken(image):
 
         
 def getDigest(token, image, tag):
-    cmd = 'curl --silent --header "Accept: application/vnd.docker.distribution.manifest.v2+json" --header "Authorization: Bearer %s" "https://registry-1.docker.io/v2/%s/manifests/%s"' % (token, image, tag) 
-    ps = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE,stderr=subprocess.PIPE)
-    output = ps.communicate()
+    if not validImage(image) or not validTag(tag) or not validToken(token):
+        return None
+    url = '%s/v2/%s/manifests/%s' % (REGISTRY_URL, image, tag)
+    output = ImageRef.curl(['--silent', '--header', MANIFEST_ACCEPT,
+                            '--header', 'Authorization: Bearer %s' % token, url])
     if len(output[0].strip()) > 0:
         jstring = extractJson(output[0].decode('utf-8'))
         try:
             j = json.loads(jstring)
         except ValueError:
             with open('/tmp/docker_error.txt', 'w') as fh:
-                fh.write(cmd+'\n'+output[0].decode('utf-8'))
+                fh.write(url+'\n'+output[0].decode('utf-8'))
             print('Error getting digest for image: %s tag: %s' % (image, tag))
             print('please email the file at /tmp/docker_error.txt to mfthomps@nps.edu')
             exit(1)
@@ -175,9 +187,11 @@ def getDigest(token, image, tag):
         return None
 
 def getCreated(token, image, digest):
-    cmd = 'curl -L --silent --header "Authorization: Bearer %s" "https://registry-1.docker.io/v2/%s/blobs/%s"' % (token, image, digest)
-    ps = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE,stderr=subprocess.PIPE)
-    output = ps.communicate()
+    if not validImage(image) or not validDigest(digest) or not validToken(token):
+        return None, None, None, None
+    url = '%s/v2/%s/blobs/%s' % (REGISTRY_URL, image, digest)
+    output = ImageRef.curl(['-L', '--silent',
+                            '--header', 'Authorization: Bearer %s' % token, url])
     
     if len(output[0].strip()) > 0:
         ''' Sometimes get redirected, and authentication then fails? '''
@@ -186,7 +200,7 @@ def getCreated(token, image, digest):
             j = json.loads(jstring)
         except ValueError:
             with open('/tmp/docker_error.txt', 'w') as fh:
-                fh.write(cmd+'\n'+output[0])
+                fh.write(url+'\n'+output[0].decode('utf-8'))
             print('Error getting blob for image: %s digest: %s' % (image, digest))
             print('please email the file at /tmp/docker_error.txt to mfthomps@nps.edu')
             exit(1)

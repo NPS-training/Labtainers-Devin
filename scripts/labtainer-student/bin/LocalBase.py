@@ -28,22 +28,25 @@ STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN
 ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 POSSIBILITY OF SUCH DAMAGE.
 '''
-import os
 import sys
 import json
-import subprocess
 import VersionInfo
 import LabtainerLogging
+import ImageRef
+from ImageRef import validImage, validTag, validDigest
 '''
 Return creation date and user of a given image from a local registry, i.e.,
-the test registry.
+the test registry.  Image names and tags provided by the registry are untrusted,
+see ImageRef for the validation applied to them.
 '''
-
-
+MANIFEST_ACCEPT = 'Accept: application/vnd.docker.distribution.manifest.v2+json'
 
 def inspectLocal(image, lgr, test_registry):
     use_tag = 'latest'
     lgr.debug('inspectLocal image %s' % image)
+    if not validImage(image) or not validImage(test_registry):
+        lgr.error('inspectLocal invalid image %s or registry %s' % (image, test_registry))
+        return None, None
     digest = getDigest(image, 'latest', test_registry)
     if digest is None:
         return None, None
@@ -55,9 +58,10 @@ def inspectLocal(image, lgr, test_registry):
 
     
 def getTags(image, test_registry):
-    cmd =   'curl --silent --header "Accept: application/vnd.docker.distribution.manifest.v2+json"  "http://%s/v2/%s/tags/list"' % (test_registry, image)
-    ps = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE,stderr=subprocess.PIPE)
-    output = ps.communicate()
+    if not validImage(image) or not validImage(test_registry):
+        return None
+    output = ImageRef.curl(['--silent', '--header', MANIFEST_ACCEPT,
+                            'http://%s/v2/%s/tags/list' % (test_registry, image)])
     if len(output[0].strip()) > 0:
         j = json.loads(output[0].decode('utf-8'))
         if 'tags' in j:
@@ -68,9 +72,10 @@ def getTags(image, test_registry):
         return None
 
 def getDigest(image, tag, test_registry):
-    cmd =   'curl --silent --header "Accept: application/vnd.docker.distribution.manifest.v2+json"  "http://%s/v2/%s/manifests/%s"' % (test_registry, image, tag)
-    ps = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE,stderr=subprocess.PIPE)
-    output = ps.communicate()
+    if not validImage(image) or not validImage(test_registry) or not validTag(tag):
+        return None
+    output = ImageRef.curl(['--silent', '--header', MANIFEST_ACCEPT,
+                            'http://%s/v2/%s/manifests/%s' % (test_registry, image, tag)])
     if len(output[0].strip()) > 0:
         j = json.loads(output[0].decode('utf-8'))
         if 'config' in j:
@@ -81,13 +86,15 @@ def getDigest(image, tag, test_registry):
         return None
 
 def getCreated(image, digest, test_registry):
-    cmd = 'curl --silent --location "http://%s/v2/%s/blobs/%s"' % (test_registry, image, digest)
-    ps = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE,stderr=subprocess.PIPE)
-    output = ps.communicate()
+    if not validImage(image) or not validImage(test_registry) or not validDigest(digest):
+        return None, None
+    output = ImageRef.curl(['--silent', '--location',
+                            'http://%s/v2/%s/blobs/%s' % (test_registry, image, digest)])
     if len(output[0].strip()) > 0:
         j = json.loads(output[0].decode('utf-8'))
         #print j['container_config']['User']
         return j['created'], j['container_config']['User']
+    return None, None
 
 if __name__ == '__main__':
     logger = LabtainerLogging.LabtainerLogging("remotebase.log", 'none', "../../config/labtainer.config")
