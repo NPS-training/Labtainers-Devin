@@ -28,8 +28,8 @@ ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 POSSIBILITY OF SUCH DAMAGE.
 '''
 import subprocess
-import os
 import sys
+import ImageRef
 def getFrom(dockerfile, registry):
     ''' given a docker file and registry, get the base image name, qualified by the registry '''
     image_name = None
@@ -47,9 +47,11 @@ def getFrom(dockerfile, registry):
 
 def getImageId(image, quiet):
     ''' given an image name, use docker to determine the image ID present on this installation '''
-    #cmd = 'docker images | grep %s' % image
-    cmd = 'docker images -f=reference="%s:latest" -q ' % image
-    ps = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+    if not ImageRef.validImage(image):
+        print('VersionInfo, getImageId: invalid image name %s' % image)
+        exit(1)
+    cmd = ['docker', 'images', '-f=reference=%s:latest' % image, '-q']
+    ps = subprocess.Popen(cmd, stdout=subprocess.PIPE,stderr=subprocess.PIPE)
     output = ps.communicate()
     if len(output[1]) > 0:
         print(output[1].decode('utf-8'))
@@ -57,8 +59,7 @@ def getImageId(image, quiet):
     if len(output[0]) > 0:
         return output[0].decode('utf-8').strip()
     elif quiet:
-        cmd = 'docker pull %s' % image
-        os.system(cmd)
+        ImageRef.dockerPull(image)
     else:
         print('VersionInfo, getImageId: no image found for %s' % image)
         print('**************************************************')
@@ -74,8 +75,7 @@ def getImageId(image, quiet):
             exit(0)
         else:
             print('Please wait for download to complete...')
-            cmd = 'docker pull %s' % image
-            os.system(cmd)
+            ImageRef.dockerPull(image)
             print('Download has completed.  Wait for lab to start.')
             return getImageId(image, quiet)
 

@@ -28,32 +28,18 @@ STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN
 ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 POSSIBILITY OF SUCH DAMAGE.
 '''
-import re
 import sys
 import json
-import shlex
-import subprocess
 import VersionInfo
+import ImageRef
+from ImageRef import validImage, validTag, validDigest
 '''
 Return creation date and user of a given image from a local registry, i.e.,
-the test registry.
+the test registry.  Image names, labels and tags provided by the registry are
+untrusted, see ImageRef for the validation applied to them.
 '''
 
-''' Docker image references, registry host:port values and image IDs are used to
-    build commands and URLs.  Values read from registry metadata are untrusted,
-    thus each is confined to these patterns. '''
-IMAGE_REF = re.compile(r'^[a-zA-Z0-9][a-zA-Z0-9._-]*(:[0-9]+)?(/[a-zA-Z0-9][a-zA-Z0-9._-]*)*(:[a-zA-Z0-9][a-zA-Z0-9._-]*)?$')
-TAG_REF = re.compile(r'^[a-zA-Z0-9][a-zA-Z0-9._-]*$')
-DIGEST_REF = re.compile(r'^[a-zA-Z0-9]+:[a-fA-F0-9]+$')
-
-def validImage(image):
-    return image is not None and IMAGE_REF.match(image) is not None
-
-def validTag(tag):
-    return tag is not None and TAG_REF.match(tag) is not None
-
-def validDigest(digest):
-    return digest is not None and DIGEST_REF.match(digest) is not None
+MANIFEST_ACCEPT = 'Accept: application/vnd.docker.distribution.manifest.v2+json'
 
 def inspectLocal(image, lgr, test_registry, is_rebuild=False, quiet=False, no_pull=False):
     use_tag = 'latest'
@@ -87,7 +73,7 @@ def inspectLocal(image, lgr, test_registry, is_rebuild=False, quiet=False, no_pu
             if is_rebuild or need_tag in tlist:
                 use_tag = need_tag
             elif quiet:
-                dockerPull(base_image)
+                ImageRef.dockerPull(base_image, lgr=lgr)
             else:
                 print('**************************************************')
                 print('*  This lab will require a download of           *')
@@ -102,28 +88,17 @@ def inspectLocal(image, lgr, test_registry, is_rebuild=False, quiet=False, no_pu
                     exit(0)
                 else:
                     print('Please wait for download to complete...')
-                    dockerPull(base_image)
+                    ImageRef.dockerPull(base_image, lgr=lgr)
                     print('Download has completed.  Wait for lab to start.')
 
     return created, user, version, use_tag, base
-
-def dockerPull(image):
-    ''' pull an image without use of a shell, image must have been validated '''
-    return subprocess.call(['docker', 'pull', image])
-
-def registryCurl(cmd):
-    ''' run a curl command against the registry without use of a shell '''
-    ps = subprocess.Popen(shlex.split(cmd), stdout=subprocess.PIPE,stderr=subprocess.PIPE)
-    return ps.communicate()
 
 def checkRegistryExists(test_registry, lgr):
     if not validImage(test_registry):
         lgr.error('checkRegistryExists invalid registry %s' % test_registry)
         return False
-    cmd = 'curl http://%s/v2/' % test_registry
     retval = True
-    ps = subprocess.Popen(shlex.split(cmd), stdout=subprocess.PIPE,stderr=subprocess.PIPE)
-    output = ps.communicate()
+    output = ImageRef.curl(['http://%s/v2/' % test_registry])
     if len(output[0]) > 0:
         val = output[0].decode('utf-8')
         if val.strip() != '{}':
@@ -137,8 +112,8 @@ def checkRegistryExists(test_registry, lgr):
 def getTags(image, test_registry):
     if not validImage(image) or not validImage(test_registry):
         return None
-    cmd =   'curl --silent --header "Accept: application/vnd.docker.distribution.manifest.v2+json"  "http://%s/v2/%s/tags/list"' % (test_registry, image)
-    output = registryCurl(cmd)
+    output = ImageRef.curl(['--silent', '--header', MANIFEST_ACCEPT,
+                            'http://%s/v2/%s/tags/list' % (test_registry, image)])
     if len(output[0].strip()) > 0:
         j = json.loads(output[0].decode('utf-8'))
         if 'tags' in j:
@@ -151,8 +126,8 @@ def getTags(image, test_registry):
 def getDigest(image, tag, test_registry):
     if not validImage(image) or not validImage(test_registry) or not validTag(tag):
         return None
-    cmd =   'curl --silent --header "Accept: application/vnd.docker.distribution.manifest.v2+json"  "http://%s/v2/%s/manifests/%s"' % (test_registry, image, tag)
-    output = registryCurl(cmd)
+    output = ImageRef.curl(['--silent', '--header', MANIFEST_ACCEPT,
+                            'http://%s/v2/%s/manifests/%s' % (test_registry, image, tag)])
     if len(output[0].strip()) > 0:
         j = json.loads(output[0].decode('utf-8'))
         if 'config' in j:
@@ -165,8 +140,8 @@ def getDigest(image, tag, test_registry):
 def getCreated(image, digest, test_registry):
     if not validImage(image) or not validImage(test_registry) or not validDigest(digest):
         return None, None, None, None
-    cmd = 'curl --silent --location "http://%s/v2/%s/blobs/%s"' % (test_registry, image, digest)
-    output = registryCurl(cmd)
+    output = ImageRef.curl(['--silent', '--location',
+                            'http://%s/v2/%s/blobs/%s' % (test_registry, image, digest)])
     if len(output[0].strip()) > 0:
         j = json.loads(output[0].decode('utf-8'))
         #print j['container_config']['User']
