@@ -214,16 +214,12 @@ def getCreated(token, image, digest):
                 version = j['container_config']['Labels']['version'] 
             if 'base' in j['container_config']['Labels']:
                 base = j['container_config']['Labels']['base'] 
-                if not validImage(base):
-                    base = None
             return j['created'], j['container_config']['User'], version, base
         else:
             if 'version' in j['config']['Labels']:
                 version = j['config']['Labels']['version'] 
             if 'base' in j['config']['Labels']:
                 base = j['config']['Labels']['base'] 
-                if not validImage(base):
-                    base = None
 
             return j['created'], j['config']['User'], version, base
     else:

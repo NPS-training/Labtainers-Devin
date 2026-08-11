@@ -151,9 +151,7 @@ def getCreated(image, digest, test_registry):
             version = j['container_config']['Labels']['version'] 
         if 'base' in j['container_config']['Labels']:
             base = j['container_config']['Labels']['base'] 
-            if not validImage(base):
-                base = None
-            elif '/' in base:
+            if '/' in base:
                 base = '%s/%s' % (test_registry, base.split('/')[1])
         return j['created'], j['container_config']['User'], version, base
     return None, None, None, None
