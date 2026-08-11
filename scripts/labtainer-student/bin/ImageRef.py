@@ -36,8 +36,10 @@ with helpers to run docker and curl without use of a shell.  Image names, labels
 (e.g., "base") and tags read from a registry are attacker-controlled values, thus
 they are confined to these patterns before being used in a command or a URL.
 '''
-IMAGE_REF = re.compile(r'^[a-zA-Z0-9][a-zA-Z0-9._-]*(:[0-9]+)?(/[a-zA-Z0-9][a-zA-Z0-9._-]*)*(:[a-zA-Z0-9][a-zA-Z0-9._-]*)?$')
-TAG_REF = re.compile(r'^[a-zA-Z0-9][a-zA-Z0-9._-]*$')
+''' a registry host or a path component, e.g. "testregistry", "dmz-example.inner_gw.student" '''
+COMPONENT = r'[a-zA-Z0-9_][a-zA-Z0-9._-]*'
+IMAGE_REF = re.compile(r'^%s(:[0-9]+)?(/%s)*(:%s)?$' % (COMPONENT, COMPONENT, COMPONENT))
+TAG_REF = re.compile(r'^%s$' % COMPONENT)
 DIGEST_REF = re.compile(r'^[a-zA-Z0-9]+:[a-fA-F0-9]+$')
 TOKEN_REF = re.compile(r'^[a-zA-Z0-9._~+/=-]+$')
 
