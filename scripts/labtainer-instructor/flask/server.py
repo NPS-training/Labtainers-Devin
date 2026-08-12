@@ -29,6 +29,7 @@ ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 POSSIBILITY OF SUCH DAMAGE.
 '''
 from flask import Flask, render_template, url_for, send_file, Response, request, abort
+from werkzeug.utils import safe_join
 import json
 import sys
 import os
@@ -40,6 +41,18 @@ from flask_table import Table, Col, LinkCol, create_table, NestedTableCol, html
 Use the Flask framework to create dynamic web pages displaying student goals
 and the intermediate results and raw artifacts.
 '''
+
+def safePath(base_dir, *paths):
+    ''' Join client-supplied path segments onto base_dir, rejecting any
+        path that would escape base_dir. Returns None if unsafe. '''
+    abs_path = safe_join(base_dir, *paths)
+    if abs_path is None:
+        return None
+    real_base = os.path.realpath(base_dir)
+    real_path = os.path.realpath(abs_path)
+    if real_path != real_base and not real_path.startswith(real_base + os.sep):
+        return None
+    return abs_path
 
 def centerIt(content):
      retval = '<td style="text-align:center">%s</td>' % content
@@ -295,10 +308,10 @@ def student_select(student_id):
 
 @app.route('/grades/ts/<student_id>/<string:ts>')
 def ts_select(student_id, ts):
-    student_dir = os.path.join(lab_dir, student_id)
-    student_inter_dir = os.path.join(student_dir, '.local','result')
     ts_file = '%s.%s' % (lab, ts)
-    ts_path = os.path.join(student_inter_dir, ts_file)
+    ts_path = safePath(lab_dir, student_id, '.local', 'result', ts_file)
+    if ts_path is None:
+        return abort(404)
     with open(ts_path) as fh:
         data = fh.read()
     
@@ -307,9 +320,9 @@ def ts_select(student_id, ts):
     
 @app.route('/grades/<student_id>/goals_json')
 def goals_json(student_id):
-    student_dir = os.path.join(lab_dir, student_id)
-    student_inter_dir = os.path.join(student_dir, '.local','result')
-    goals_path = os.path.join(student_inter_dir, 'goals.json')
+    goals_path = safePath(lab_dir, student_id, '.local', 'result', 'goals.json')
+    if goals_path is None:
+        return abort(404)
     with open(goals_path) as fh:
         data = fh.read()
     
@@ -320,7 +333,9 @@ def goals_json(student_id):
 @app.route('/grades/history/<student_id>/<container_id>')
 def history(student_id, container_id):
    
-    container_history = os.path.join(lab_dir, student_id, container_id, '.bash_history')
+    container_history = safePath(lab_dir, student_id, container_id, '.bash_history')
+    if container_history is None:
+        return abort(404)
     with open(container_history) as fh:
         data = fh.read()
     
@@ -331,13 +346,17 @@ def history(student_id, container_id):
 def raw_select(student_id, container_id, ts, fname):
     global raw_fpath
     #print('IN raw select')
-    result_dir = os.path.join(lab_dir, student_id, container_id, '.local', 'result')
+    result_dir = safePath(lab_dir, student_id, container_id, '.local', 'result')
+    if result_dir is None:
+        return abort(404)
     if ts == 'None':
         ts_fname = raw_fpath[1:]
         fname = raw_fpath
     else:
         ts_fname = '%s.%s' % (fname, ts)
-    path = os.path.join(result_dir, ts_fname)
+    path = safePath(result_dir, ts_fname)
+    if path is None:
+        return abort(404)
     data = ifNotBinary(path)
     if data is None:
         data = '%s is not ascii.' % path
@@ -873,13 +892,15 @@ def getStudentFileTable(student_id):
 def home_file_select(student_id, container, req_path):
     container_id = '%s.%s.student' % (lab, container) 
     student_email = student_id.rsplit('.', 1)[0]
-    BASE_DIR = os.path.join(lab_dir, student_id, container_id)
+    BASE_DIR = safePath(lab_dir, student_id, container_id)
+    if BASE_DIR is None:
+        return abort(404)
     trim = len('/grades/file_home')+len(student_id)+len(container)+2
     # Joining the base and the requested path
-    abs_path = os.path.join(BASE_DIR, req_path)
+    abs_path = safePath(BASE_DIR, req_path)
 
-    # Return 404 if path doesn't exist
-    if not os.path.exists(abs_path):
+    # Return 404 if path doesn't exist or escapes the base directory
+    if abs_path is None or not os.path.exists(abs_path):
         return abort(404)
 
     # Check if path is a file and serve
@@ -902,13 +923,15 @@ def home_file_select(student_id, container, req_path):
 def results_file_select(student_id, container, req_path):
     container_id = '%s.%s.student' % (lab, container) 
     student_email = student_id.rsplit('.', 1)[0]
-    BASE_DIR = os.path.join(lab_dir, student_id, container_id, '.local', 'result')
+    BASE_DIR = safePath(lab_dir, student_id, container_id, '.local', 'result')
+    if BASE_DIR is None:
+        return abort(404)
     trim = len('/grades/file_results')+len(student_id)+len(container)+2
     # Joining the base and the requested path
-    abs_path = os.path.join(BASE_DIR, req_path)
+    abs_path = safePath(BASE_DIR, req_path)
 
-    # Return 404 if path doesn't exist
-    if not os.path.exists(abs_path):
+    # Return 404 if path doesn't exist or escapes the base directory
+    if abs_path is None or not os.path.exists(abs_path):
         return abort(404)
 
     # Check if path is a file and serve
@@ -929,13 +952,15 @@ def results_file_select(student_id, container, req_path):
 @app.route('/grades/filelist/<student_id>', defaults={'req_path': ''})
 @app.route('/grades/filelist/<student_id>/<path:req_path>')
 def dir_listing(student_id, req_path):
-    BASE_DIR = os.path.join(lab_dir, student_id)
+    BASE_DIR = safePath(lab_dir, student_id)
+    if BASE_DIR is None:
+        return abort(404)
 
     # Joining the base and the requested path
-    abs_path = os.path.join(BASE_DIR, req_path)
+    abs_path = safePath(BASE_DIR, req_path)
 
-    # Return 404 if path doesn't exist
-    if not os.path.exists(abs_path):
+    # Return 404 if path doesn't exist or escapes the base directory
+    if abs_path is None or not os.path.exists(abs_path):
         return abort(404)
 
     # Check if path is a file and serve
