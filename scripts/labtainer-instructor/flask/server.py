@@ -308,10 +308,10 @@ def student_select(student_id):
 
 @app.route('/grades/ts/<student_id>/<string:ts>')
 def ts_select(student_id, ts):
-    student_dir = os.path.join(lab_dir, student_id)
-    student_inter_dir = os.path.join(student_dir, '.local','result')
     ts_file = '%s.%s' % (lab, ts)
-    ts_path = os.path.join(student_inter_dir, ts_file)
+    ts_path = safePath(lab_dir, student_id, '.local', 'result', ts_file)
+    if ts_path is None:
+        return abort(404)
     with open(ts_path) as fh:
         data = fh.read()
     
@@ -320,9 +320,9 @@ def ts_select(student_id, ts):
     
 @app.route('/grades/<student_id>/goals_json')
 def goals_json(student_id):
-    student_dir = os.path.join(lab_dir, student_id)
-    student_inter_dir = os.path.join(student_dir, '.local','result')
-    goals_path = os.path.join(student_inter_dir, 'goals.json')
+    goals_path = safePath(lab_dir, student_id, '.local', 'result', 'goals.json')
+    if goals_path is None:
+        return abort(404)
     with open(goals_path) as fh:
         data = fh.read()
     
@@ -333,7 +333,9 @@ def goals_json(student_id):
 @app.route('/grades/history/<student_id>/<container_id>')
 def history(student_id, container_id):
    
-    container_history = os.path.join(lab_dir, student_id, container_id, '.bash_history')
+    container_history = safePath(lab_dir, student_id, container_id, '.bash_history')
+    if container_history is None:
+        return abort(404)
     with open(container_history) as fh:
         data = fh.read()
     
@@ -344,13 +346,17 @@ def history(student_id, container_id):
 def raw_select(student_id, container_id, ts, fname):
     global raw_fpath
     #print('IN raw select')
-    result_dir = os.path.join(lab_dir, student_id, container_id, '.local', 'result')
+    result_dir = safePath(lab_dir, student_id, container_id, '.local', 'result')
+    if result_dir is None:
+        return abort(404)
     if ts == 'None':
         ts_fname = raw_fpath[1:]
         fname = raw_fpath
     else:
         ts_fname = '%s.%s' % (fname, ts)
-    path = os.path.join(result_dir, ts_fname)
+    path = safePath(result_dir, ts_fname)
+    if path is None:
+        return abort(404)
     data = ifNotBinary(path)
     if data is None:
         data = '%s is not ascii.' % path
