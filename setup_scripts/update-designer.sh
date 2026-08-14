@@ -65,7 +65,7 @@ labtainer_root=`pwd`
 target=~/.bashrc
 grep ":scripts/designer/bin:" $target | grep PATH >>/dev/null
 result=$?
-if [[ result -ne 0 ]];then
+if [[ $result -ne 0 ]];then
    cat <<EOT >>$target
    if [[ ":\$PATH:" != *":scripts/designer/bin:"* ]]; then 
        export LABTAINER_DIR=$labtainer_root/trunk
@@ -84,7 +84,7 @@ if [[ "$TEST_REGISTRY" != TRUE ]]; then
     #wget --quiet https://github.com/mfthomps/Labtainers/raw/master/distrib/release/labtainer-developer.tar -O labtainer-developer.tar
     wget --quiet https://github.com/mfthomps/Labtainers/tarball/master -O labtainer-master.tar
     result=$?
-    if [[ result -ne 0 ]];then
+    if [[ $result -ne 0 ]];then
         echo "Failed retrieving master tarball from github.  Network problems?  Maybe try again."
         exit
     fi
@@ -101,11 +101,10 @@ if [[ "$TEST_REGISTRY" != TRUE ]]; then
    # ubuntu unattended upgrades are a curse
    sudo systemctl kill --kill-who=all apt-daily.service
    sudo systemctl kill --kill-who=all apt-daily-upgrade.service
-   sudo apt-get update
+   sudo apt-get -o DPkg::Lock::Timeout=300 update
    sudo systemctl kill --kill-who=all apt-daily.service
    sudo systemctl kill --kill-who=all apt-daily-upgrade.service
-   sudo rm /var/lib/dpkg/lock
-   sudo apt-get install -y default-jre xdotool net-tools
+   sudo apt-get -o DPkg::Lock::Timeout=300 install -y default-jre xdotool net-tools
 fi
 #sudo -H pip install netaddr parse python-dateutil
 cd ..

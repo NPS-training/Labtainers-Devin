@@ -38,7 +38,7 @@ export LABTAINER_DIR=$here/trunk
 target=~/.bashrc
 grep ":./bin:" $target | grep PATH >>/dev/null
 result=$?
-if [[ result -ne 0 ]];then
+if [[ $result -ne 0 ]];then
     cat <<EOT >>$target
     if [[ ":\$PATH:" != *":./bin:"* ]]; then 
         export PATH="\${PATH}:./bin:$here/trunk/scripts/designer/bin"
@@ -49,7 +49,7 @@ fi
 
 grep "Labtainer Aliases" $target >>/dev/null
 result=$?
-if [[ result -ne 0 ]];then
+if [[ $result -ne 0 ]];then
     here=`realpath ../`
     cat <<EOT >>$target
     #

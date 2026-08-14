@@ -5,7 +5,7 @@ exec > >(tee "/tmp/doterm.log") 2>&1
 target=~/.bashrc
 grep "lab-completion.bash" $target >>/dev/null
 result=$?
-if [[ result -ne 0 ]];then
+if [[ $result -ne 0 ]];then
    echo 'source $LABTAINER_DIR/setup_scripts/lab-completion.bash' >> $target
 fi
 source $LABTAINER_DIR/setup_scripts/lab-completion.bash

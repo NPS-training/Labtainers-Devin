@@ -1,9 +1,19 @@
 #
-# All non-Ubuntu 18 update logic should go here
+# All non-Ubuntu 18 update logic should go here.  Sourced from update-add.sh, which
+# then performs the update steps that are common to all distributions, e.g., pulling
+# base images and reporting the installed release.
 #
+if [ -z "$LABTAINER_DIR" ] || [ ! -d "$LABTAINER_DIR/setup_scripts" ]; then
+    echo "Unable to determine the labtainer directory.  Please set LABTAINER_DIR to"
+    echo "the trunk directory of your Labtainers installation and try again."
+    return 1
+fi
 #
-$LABTAINER_DIR/setup_scripts/pull-all.py $test_flag 
-grep "^Distribution created:" labtainer/trunk/README.md | awk '{print "Updated to release of: ", $3, $4}'
-grep "^Branch:" labtainer/trunk/README.md | awk '{print "branch: ", $2}'
-grep "^Revision:" labtainer/trunk/README.md | awk '{print "Revision: ", $2}'
-grep "^Commit:" labtainer/trunk/README.md | awk '{print "Commit: ", $2}'
+# Distributions other than Ubuntu 18 are expected to provide the python
+# environment used by the Labtainer scripts.
+#
+if [ ! -d /opt/labtainer/venv/bin ]; then
+    echo "The /opt/labtainer/venv python environment is missing, the Labtainer scripts"
+    echo "will not run.  See the Labtainers documentation for installation instructions."
+    return 1
+fi
