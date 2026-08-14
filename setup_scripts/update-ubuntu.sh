@@ -52,12 +52,17 @@ labtainer_apt_get() {
     wait_dpkg_lock || return 1
     labtainer_sudo env DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=300 "$@"
 }
-labtainer_apt_get update || return 1
+#
+# apt-get update exits non-zero for any unreachable source, and the libappstream4
+# reinstall and containerd install are historical best-effort workarounds, so warn
+# rather than abandon the update part way through.
+#
+labtainer_apt_get update || echo "apt-get update reported errors, continuing."
 # msc ubuntu breakage
-labtainer_apt_get install -y --reinstall libappstream4 || return 1
-labtainer_apt_get update || return 1
+labtainer_apt_get install -y --reinstall libappstream4 || echo "Unable to reinstall libappstream4, continuing."
+labtainer_apt_get update || echo "apt-get update reported errors, continuing."
 if [ ! -d "$HOME/headless-labtainers" ]; then
-    labtainer_apt_get install -y containerd || return 1
+    labtainer_apt_get install -y containerd || echo "Unable to install containerd, continuing."
 fi
 #---Use virtual python environment to avoid Ubuntu lockdown
 if [ ! -d /opt/labtainer/venv/bin ]; then

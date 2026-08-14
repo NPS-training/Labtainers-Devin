@@ -1,3 +1,4 @@
+#!/bin/bash
 #
 # Runs in an xterm that closes when this script exits, so pause after reporting
 # a failure to leave the reason on the screen.
