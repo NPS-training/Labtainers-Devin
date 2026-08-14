@@ -2,8 +2,20 @@
 # update-add.sh Migrate most update function here so that changes to this this file are updated
 # before the script is sourced from the update-labtainer.sh script.
 #
+#
+# Derive LABTAINER_DIR from the location of this script, which lives in
+# <labtainer trunk>/setup_scripts, rather than assume a user or home directory.
+#
 if [ -z "$LABTAINER_DIR" ] || [ ! -d "$LABTAINER_DIR" ]; then
-    export LABTAINER_DIR=/home/student/labtainer/trunk
+    if [ -n "${BASH_SOURCE[0]}" ]; then
+        script_dir=$(dirname "$(realpath "${BASH_SOURCE[0]}")")
+        export LABTAINER_DIR=$(dirname "$script_dir")
+    fi
+fi
+if [ -z "$LABTAINER_DIR" ] || [ ! -d "$LABTAINER_DIR/setup_scripts" ]; then
+    echo "Unable to determine the labtainer directory.  Please set LABTAINER_DIR to"
+    echo "the trunk directory of your Labtainers installation and try again."
+    exit 1
 fi
 distrib=`cat /etc/*-release | grep "^DISTRIB_ID" | awk -F "=" '{print $2}'`
 if [[ -z "$distrib" ]]; then
@@ -14,24 +26,39 @@ RESULT=0
 case "$distrib" in
     Ubuntu)
         echo is ubuntu
-        #
-        # Maintain old update hacks so old distributions (including VM image copies in horizon) still work.
-        #
         release=`cat /etc/*-release | grep "^DISTRIB_RELEASE" | awk -F "=" '{print $2}'`
-        if [ $release != '18.04' ];then
+        #
+        # Numeric comparison of the release, e.g., 18.04 becomes 1804.
+        #
+        release_major=$(echo "$release" | cut -d. -f1)
+        release_minor=$(echo "$release" | cut -d. -f2)
+        release_num=$((10#${release_major:-0} * 100 + 10#${release_minor:-0}))
+        if [ $release_num -gt 1804 ] || [ $release_num -eq 0 ]; then
             source $LABTAINER_DIR/setup_scripts/update-add-new.sh
-            exit 0
-        fi 
-        source $LABTAINER_DIR/setup_scripts/update-ubuntu.sh
-        RESULT=$?
+            RESULT=$?
+        else
+            #
+            # Maintain old update hacks so old distributions (including VM image copies in horizon) still work.
+            #
+            source $LABTAINER_DIR/setup_scripts/update-ubuntu.sh
+            RESULT=$?
+        fi
         ;;
     *)
-        echo "Only Ubuntu is currently supported."
-        exit 1
+        #
+        # Other distributions are not tested, but the generic update steps may work.
+        #
+        echo "Distribution \"$distrib\" is not tested with Labtainers, using generic update steps."
+        source $LABTAINER_DIR/setup_scripts/update-add-new.sh
+        RESULT=$?
         ;;
 esac
+if [ $RESULT -ne 0 ]; then
+    echo "Distribution specific update steps failed, aborting the update."
+    exit 1
+fi
 
-$LABTAINER_DIR/setup_scripts/pull-all.py $test_flag 
+$LABTAINER_DIR/setup_scripts/pull-all.py $test_flag || exit 1
 here=`pwd`
 rm -fr labtainer/trunk/setup-scripts
 cd labtainer/trunk/scripts/labtainer-student/bin
@@ -45,7 +72,7 @@ fi
 target=~/.bashrc
 grep "lab-completion.bash" $target >>/dev/null
 result=$?
-if [[ result -ne 0 ]];then
+if [[ $result -ne 0 ]];then
    echo 'source $LABTAINER_DIR/setup_scripts/lab-completion.bash' >> $target
 fi
 source $LABTAINER_DIR/setup_scripts/lab-completion.bash
