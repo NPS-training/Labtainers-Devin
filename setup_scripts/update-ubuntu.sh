@@ -12,14 +12,30 @@ labtainer_sudo() {
     fi
 }
 #
+# Get the sudo credential with a visible prompt, the subsequent sudo commands
+# suppress their output and would otherwise appear to hang.
+#
+labtainer_prime_sudo() {
+    if sudo -n true 2>/dev/null; then
+        return 0
+    fi
+    if [[ -n "$LABTAINER_SUDO_PASSWORD" ]]; then
+        echo "$LABTAINER_SUDO_PASSWORD" | sudo -S -v
+    else
+        echo "The Labtainers update installs packages, please provide your password below."
+        sudo -v
+    fi
+}
+#
 # Wait for other package managers (e.g., unattended upgrades) to release the
 # dpkg lock rather than deleting the lock and risking a corrupt package database.
 #
 wait_dpkg_lock() {
     local waited=0
     local max_wait=300
+    labtainer_prime_sudo || return 1
     while [[ $waited -lt $max_wait ]]; do
-        if ! labtainer_sudo fuser /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend >/dev/null 2>&1; then
+        if ! sudo -n fuser /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend >/dev/null 2>&1; then
             return 0
         fi
         if [[ $waited -eq 0 ]]; then
