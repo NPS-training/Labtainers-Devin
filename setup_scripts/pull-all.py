@@ -13,6 +13,8 @@ def getLabtainerDir():
         return labtainer_dir
     here = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
     if os.path.isdir(os.path.join(here, 'scripts', 'labtainer-student', 'bin')):
+        ''' other modules, e.g., registry, expect LABTAINER_DIR in the environment '''
+        os.environ['LABTAINER_DIR'] = here
         return here
     print('Unable to determine the labtainer directory.  Please set LABTAINER_DIR')
     print('to the trunk directory of your Labtainers installation and try again.')

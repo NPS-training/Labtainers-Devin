@@ -52,25 +52,26 @@ labtainer_apt_get() {
     wait_dpkg_lock || return 1
     labtainer_sudo env DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=300 "$@"
 }
-labtainer_apt_get update
+labtainer_apt_get update || return 1
 # msc ubuntu breakage
-labtainer_apt_get install -y --reinstall libappstream4
-labtainer_apt_get update
+labtainer_apt_get install -y --reinstall libappstream4 || return 1
+labtainer_apt_get update || return 1
 if [ ! -d "$HOME/headless-labtainers" ]; then
-    labtainer_apt_get install -y containerd
+    labtainer_apt_get install -y containerd || return 1
 fi
 #---Use virtual python environment to avoid Ubuntu lockdown
 if [ ! -d /opt/labtainer/venv/bin ]; then
     haspip3=$(dpkg -l python3-pip)
     if [ -z "$haspip3" ]; then
         echo "Need to install python3-pip package, will sudo apt-get"
-        labtainer_apt_get install -y python3-pip
+        labtainer_apt_get install -y python3-pip || return 1
     fi
-    labtainer_apt_get install -y python3-venv
-    labtainer_sudo mkdir -p /opt/labtainer/venv
-    labtainer_sudo python3 -m venv /opt/labtainer/venv
-    labtainer_sudo ln -s /opt/labtainer/venv/bin/python /opt/labtainer/python3
+    labtainer_apt_get install -y python3-venv || return 1
+    labtainer_sudo mkdir -p /opt/labtainer/venv || return 1
+    labtainer_sudo python3 -m venv /opt/labtainer/venv || return 1
+    labtainer_sudo ln -s /opt/labtainer/venv/bin/python /opt/labtainer/python3 || return 1
     #-- downgrade requests and urllib packages due to docker python module bug
-    labtainer_sudo /opt/labtainer/venv/bin/python3 -m pip install 'requests<2.29.0' 'urllib3<2.0' || exit 1
-    labtainer_sudo /opt/labtainer/venv/bin/python3 -m pip install netaddr parse python-dateutil docker || exit 1
+    labtainer_sudo /opt/labtainer/venv/bin/python3 -m pip install 'requests<2.29.0' 'urllib3<2.0' || return 1
+    labtainer_sudo /opt/labtainer/venv/bin/python3 -m pip install netaddr parse python-dateutil docker || return 1
 fi
+return 0
